@@ -86,7 +86,12 @@ jobs:
         run: |
          echo "==== debian/control ===="
          cat debian/control
-         
+       
+      - name: Debug debian/control
+        run: |
+          echo "==== debian/control (with line numbers) ===="
+          nl -ba debian/control | sed -n '1,120p'
+  
       - name: Build Summary
         if: always()
         run: |
