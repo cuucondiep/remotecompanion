@@ -1,4 +1,4 @@
-name: Build DEB Package
+name: Build DEB Package (Theos roothide)
 
 on:
   push:
@@ -6,36 +6,44 @@ on:
       - build/roothide
     paths:
       - 'Tweak/**'
-      - 'debian/**'
       - '.github/workflows/build-deb.yml'
   pull_request:
     branches:
       - build/roothide
   workflow_dispatch:
+  # Nếu bạn muốn step Release chạy theo tag v*
+  push:
+    tags:
+      - 'v*'
 
 permissions:
-  contents: read
+  contents: write   # cần để tạo GitHub Release bằng GITHUB_TOKEN
   packages: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          ref: build/roothide
+          fetch-depth: 0
 
       - name: Install build dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            build-essential \
-            debhelper \
-            fakeroot \
-            devscripts \
-            equivs
+            bash curl git sudo \
+            build-essential fakeroot \
+            zip unzip \
+            perl python3 \
+            pkg-config \
+            clang \
+            dpkg-dev \
+            libplist-utils
+          # ldid có thể có/không tùy image; nếu không có thì bỏ qua
+          sudo apt-get install -y ldid || true
 
       - name: Check Tweak Makefile
         run: |
@@ -45,35 +53,88 @@ jobs:
           fi
           echo "✓ Tweak/Makefile found"
 
-      - name: Extract version from debian/changelog
-        id: version
+      - name: Install roothide Theos
         run: |
-          VERSION=$(head -n 1 debian/changelog | grep -oP '\(\K[^)]+')
-          echo "version=${VERSION}" >> $GITHUB_OUTPUT
-          echo "Package Version: ${VERSION}"
+          # roothide/Developer khuyến nghị dùng roothide/theos installer
+          # Dùng yes để tránh prompt làm treo CI
+          yes | bash -c "$(curl -fsSL https://raw.githubusercontent.com/roothide/theos/master/bin/install-theos)"
 
-      - name: Build DEB package
+          echo "THEOS=$HOME/theos" >> $GITHUB_ENV
+          echo "$HOME/theos/bin" >> $GITHUB_PATH
+
+      - name: Verify THEOS
         run: |
-          dpkg-buildpackage -us -uc -b 2>&1 | tee build.log
+          echo "THEOS=$THEOS"
+          ls -lah "$THEOS" || true
+          command -v nic.pl || true
+          command -v ldid || true
 
-      # ✅ FIX: gom file về workspace
+      - name: Extract package info (Package/Version)
+        id: pkg
+        run: |
+          set -e
+          CONTROL_FILE=""
+          # Tìm control theo các layout phổ biến của Theos
+          for f in \
+            "Tweak/control" \
+            "control" \
+            "Tweak/layout/DEBIAN/control" \
+            "layout/DEBIAN/control" \
+            "Tweak/layout_roothide/DEBIAN/control" \
+            "layout_roothide/DEBIAN/control" \
+            "Tweak/layout_rootless/DEBIAN/control" \
+            "layout_rootless/DEBIAN/control"
+          do
+            if [ -f "$f" ]; then CONTROL_FILE="$f"; break; fi
+          done
+
+          if [ -z "$CONTROL_FILE" ]; then
+            echo "WARN: control file not found, fallback version"
+            PKG="package"
+            VER="0.0.0-${GITHUB_RUN_NUMBER}"
+          else
+            PKG=$(grep -m1 '^Package:' "$CONTROL_FILE" | awk '{print $2}')
+            VER=$(grep -m1 '^Version:' "$CONTROL_FILE" | awk '{print $2}')
+            [ -n "$PKG" ] || PKG="package"
+            [ -n "$VER" ] || VER="0.0.0-${GITHUB_RUN_NUMBER}"
+            echo "Using control: $CONTROL_FILE"
+          fi
+
+          echo "name=$PKG" >> $GITHUB_OUTPUT
+          echo "version=$VER" >> $GITHUB_OUTPUT
+          echo "Package: $PKG"
+          echo "Version: $VER"
+
+      - name: Build DEB package (roothide scheme)
+        working-directory: Tweak
+        run: |
+          # roothide/Developer: build với THEOS_PACKAGE_SCHEME=roothide
+          THEOS_PACKAGE_SCHEME=roothide make clean package FINALPACKAGE=1 2>&1 | tee ../build.log
+
       - name: Collect artifacts
         run: |
           mkdir -p output
-          mv ../*.deb output/ 2>/dev/null || true
-          mv ../*.changes output/ 2>/dev/null || true
-          echo "Files collected:"
+          # Theos tạo .deb trong packages/ theo docs
+          cp -v Tweak/packages/*.deb output/ 2>/dev/null || true
+          cp -v Tweak/packages/*.changes output/ 2>/dev/null || true
+          echo "Collected:"
           ls -lah output || true
+
+          # Fail sớm nếu không có .deb
+          if ! ls output/*.deb 1>/dev/null 2>&1; then
+            echo "ERROR: No .deb found in output/"
+            echo "Hint: check build.log for Theos/SDK/toolchain errors."
+            exit 1
+          fi
 
       - name: Upload DEB artifacts
         uses: actions/upload-artifact@v4
-        if: success()
         with:
-          name: deb-package-${{ steps.version.outputs.version }}
+          name: ${{ steps.pkg.outputs.name }}-${{ steps.pkg.outputs.version }}
           path: output/*
           retention-days: 30
 
-      - name: Create Release (on tag)
+      - name: Create Release (on tag v*)
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v1
         with:
@@ -82,27 +143,22 @@ jobs:
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Debug control file
-        run: |
-         echo "==== debian/control ===="
-         cat debian/control
-       
-      - name: Debug debian/control
-        run: |
-          echo "==== debian/control (with line numbers) ===="
-          nl -ba debian/control | sed -n '1,120p'
-  
+
       - name: Build Summary
         if: always()
         run: |
           echo "## Build Summary" >> $GITHUB_STEP_SUMMARY
-          echo "- Branch: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "- Package Version: ${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Ref: ${{ github.ref }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Package: ${{ steps.pkg.outputs.name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Version: ${{ steps.pkg.outputs.version }}" >> $GITHUB_STEP_SUMMARY
           echo "- Commit: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Output" >> $GITHUB_STEP_SUMMARY
+          ls -lah output >> $GITHUB_STEP_SUMMARY || true
           if [ -f build.log ]; then
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "### Build Log" >> $GITHUB_STEP_SUMMARY
+            echo "### Build Log (tail)" >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
-            tail -n 20 build.log >> $GITHUB_STEP_SUMMARY
+            tail -n 40 build.log >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
           fi
