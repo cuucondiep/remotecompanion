@@ -82,7 +82,11 @@ jobs:
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
+      - name: Debug control file
+        run: |
+         echo "==== debian/control ===="
+         cat debian/control
+         
       - name: Build Summary
         if: always()
         run: |
