@@ -54,30 +54,30 @@ jobs:
 
       - name: Build DEB package
         run: |
-          cd ${{ github.workspace }}
           dpkg-buildpackage -us -uc -b 2>&1 | tee build.log
 
-      - name: List built packages
+      # ✅ FIX: gom file về workspace
+      - name: Collect artifacts
         run: |
-          ls -lah ../*.deb || echo "No DEB files found"
+          mkdir -p output
+          mv ../*.deb output/ 2>/dev/null || true
+          mv ../*.changes output/ 2>/dev/null || true
+          echo "Files collected:"
+          ls -lah output || true
 
       - name: Upload DEB artifacts
         uses: actions/upload-artifact@v4
         if: success()
         with:
           name: deb-package-${{ steps.version.outputs.version }}
-          path: |
-            ../*.deb
-            ../*.changes
+          path: output/*
           retention-days: 30
 
       - name: Create Release (on tag)
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v1
         with:
-          files: |
-            ../*.deb
-            ../*.changes
+          files: output/*
           draft: false
           prerelease: false
         env:
