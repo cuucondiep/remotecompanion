@@ -168,3 +168,8 @@ jobs:
             tail -n 60 build.log >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
           fi
+
+      - name: Debug tree
+        run: |
+         ls -lah
+         ls -lah Tweak || true　find . -maxdepth 3 -type f -name "control" -o -name "Makefile" | sed 's|^\./||'
