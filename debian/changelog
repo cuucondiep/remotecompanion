@@ -1,0 +1,16 @@
+remotecompanion (3.0.0) stable; urgency=medium
+
+  * Web UI: Desktop-style automation hub with iOS-inspired design
+  * Automations API: Fast remote control system with HTTP GET/POST requests
+  * Scheduled Triggers: Execute action sequences at specific times and days
+  * Notification Triggers: Trigger actions from incoming app notifications
+  * Flashlight Intensity Control: rc flashlight command now supports values from 1 to 100
+  * Improved stability and performance
+
+ -- saihgupr <saihgupr@github.com>  Fri, 15 May 2026 00:00:00 +0000
+
+remotecompanion (2.8.0) stable; urgency=medium
+
+  * Previous release
+
+ -- saihgupr <saihgupr@github.com>  Mon, 01 Jan 2024 00:00:00 +0000

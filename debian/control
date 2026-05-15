@@ -1,0 +1,18 @@
+Package: remotecompanion
+Version: 3.0.0
+Architecture: iphoneos-arm
+Maintainer: saihgupr <saihgupr@github.com>
+Installed-Size: 2048
+Depends: mobilesubstrate, firmware (>= 14.0)
+Section: Tweaks
+Priority: optional
+Homepage: https://github.com/saihgupr/remotecompanion
+Description: Fast, scriptable system control for modern jailbreaks
+ RemoteCompanion brings fast, scriptable system control to modern rootless and rootful jailbreaks. It lets you bind physical gestures and hardware buttons, or send commands remotely from your computer.
+ .
+ Features:
+  - Hardware Triggers: Bind actions to Power/Volume buttons, Home button, Touch ID
+  - Web UI & Automations API: Desktop-class automation hub at http://[DEVICE_IP]:8080
+  - Scheduled Triggers: Execute action sequences at specific times and days
+  - Cross-Version Support: Full compatibility for iOS 14 through iOS 16+
+  - Advanced Automation: NFC tags, custom Lua scripts, and native Siri integration

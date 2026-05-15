@@ -1,0 +1,18 @@
+#!/bin/bash
+set -e
+
+case "$1" in
+  configure)
+    # Reload SpringBoard to activate the tweak
+    echo "RemoteCompanion installed successfully"
+    echo "Please respring your device to activate the tweak"
+    ;;
+  abort-upgrade|abort-remove|abort-deconfigure)
+    ;;
+  *)
+    echo "postinst called with unknown argument \`$1'" >&2
+    exit 1
+    ;;
+esac
+
+exit 0
