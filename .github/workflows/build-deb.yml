@@ -1,3 +1,4 @@
+
 name: Build DEB Package (Theos roothide)
 
 on:
@@ -6,19 +7,17 @@ on:
       - build/roothide
     paths:
       - 'Tweak/**'
+      - 'debian/**'
       - '.github/workflows/build-deb.yml'
+    tags:
+      - 'v*'
   pull_request:
     branches:
       - build/roothide
   workflow_dispatch:
-  # Nếu bạn muốn step Release chạy theo tag v*
-  push:
-    tags:
-      - 'v*'
 
 permissions:
-  contents: write   # cần để tạo GitHub Release bằng GITHUB_TOKEN
-  packages: write
+  contents: write
 
 jobs:
   build:
@@ -42,7 +41,7 @@ jobs:
             clang \
             dpkg-dev \
             libplist-utils
-          # ldid có thể có/không tùy image; nếu không có thì bỏ qua
+          # ldid có thể có/không tùy runner image
           sudo apt-get install -y ldid || true
 
       - name: Check Tweak Makefile
@@ -55,8 +54,8 @@ jobs:
 
       - name: Install roothide Theos
         run: |
-          # roothide/Developer khuyến nghị dùng roothide/theos installer
-          # Dùng yes để tránh prompt làm treo CI
+          # roothide/Developer khuyến nghị cài roothide/theos bằng installer
+          # dùng yes để tránh prompt làm treo CI
           yes | bash -c "$(curl -fsSL https://raw.githubusercontent.com/roothide/theos/master/bin/install-theos)"
 
           echo "THEOS=$HOME/theos" >> $GITHUB_ENV
@@ -66,7 +65,7 @@ jobs:
         run: |
           echo "THEOS=$THEOS"
           ls -lah "$THEOS" || true
-          command -v nic.pl || true
+          command -v make
           command -v ldid || true
 
       - name: Extract package info (Package/Version)
@@ -74,7 +73,8 @@ jobs:
         run: |
           set -e
           CONTROL_FILE=""
-          # Tìm control theo các layout phổ biến của Theos
+
+          # Các vị trí control phổ biến của Theos/tweak
           for f in \
             "Tweak/control" \
             "control" \
@@ -85,42 +85,47 @@ jobs:
             "Tweak/layout_rootless/DEBIAN/control" \
             "layout_rootless/DEBIAN/control"
           do
-            if [ -f "$f" ]; then CONTROL_FILE="$f"; break; fi
+            if [ -f "$f" ]; then
+              CONTROL_FILE="$f"
+              break
+            fi
           done
 
           if [ -z "$CONTROL_FILE" ]; then
-            echo "WARN: control file not found, fallback version"
+            echo "WARN: control file not found, fallback values will be used."
             PKG="package"
             VER="0.0.0-${GITHUB_RUN_NUMBER}"
           else
-            PKG=$(grep -m1 '^Package:' "$CONTROL_FILE" | awk '{print $2}')
-            VER=$(grep -m1 '^Version:' "$CONTROL_FILE" | awk '{print $2}')
+            echo "Using control file: $CONTROL_FILE"
+            PKG="$(grep -m1 '^Package:' "$CONTROL_FILE" | awk '{print $2}')"
+            VER="$(grep -m1 '^Version:' "$CONTROL_FILE" | awk '{print $2}')"
             [ -n "$PKG" ] || PKG="package"
             [ -n "$VER" ] || VER="0.0.0-${GITHUB_RUN_NUMBER}"
-            echo "Using control: $CONTROL_FILE"
           fi
 
-          echo "name=$PKG" >> $GITHUB_OUTPUT
-          echo "version=$VER" >> $GITHUB_OUTPUT
+          echo "name=$PKG" >> "$GITHUB_OUTPUT"
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
           echo "Package: $PKG"
           echo "Version: $VER"
 
       - name: Build DEB package (roothide scheme)
         working-directory: Tweak
         run: |
-          # roothide/Developer: build với THEOS_PACKAGE_SCHEME=roothide
+          # Theo roothide/Developer: build roothide bằng THEOS_PACKAGE_SCHEME=roothide
           THEOS_PACKAGE_SCHEME=roothide make clean package FINALPACKAGE=1 2>&1 | tee ../build.log
 
       - name: Collect artifacts
         run: |
           mkdir -p output
-          # Theos tạo .deb trong packages/ theo docs
+
+          # Theos tạo gói vào packages/ (ở đây là Tweak/packages/)
           cp -v Tweak/packages/*.deb output/ 2>/dev/null || true
           cp -v Tweak/packages/*.changes output/ 2>/dev/null || true
-          echo "Collected:"
+
+          echo "Collected files:"
           ls -lah output || true
 
-          # Fail sớm nếu không có .deb
+          # Fail nếu không có .deb
           if ! ls output/*.deb 1>/dev/null 2>&1; then
             echo "ERROR: No .deb found in output/"
             echo "Hint: check build.log for Theos/SDK/toolchain errors."
@@ -155,10 +160,11 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Output" >> $GITHUB_STEP_SUMMARY
           ls -lah output >> $GITHUB_STEP_SUMMARY || true
+
           if [ -f build.log ]; then
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "### Build Log (tail)" >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
-            tail -n 40 build.log >> $GITHUB_STEP_SUMMARY
+            tail -n 60 build.log >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
           fi
