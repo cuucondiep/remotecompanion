@@ -62,7 +62,7 @@ jobs:
           ls -lah ../*.deb || echo "No DEB files found"
 
       - name: Upload DEB artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: success()
         with:
           name: deb-package-${{ steps.version.outputs.version }}
